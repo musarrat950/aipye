@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
+type UnknownRecord = Record<string, unknown>;
+
 export default function Home() {
   const [description, setDescription] = useState("");
   const [keywords, setKeywords] = useState("");
@@ -17,7 +19,7 @@ export default function Home() {
   const [language, setLanguage] = useState("English");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rawResponse, setRawResponse] = useState<any | string | null>(null);
+  const [rawResponse, setRawResponse] = useState<UnknownRecord | string | null>(null);
   const [titles, setTitles] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
@@ -55,10 +57,14 @@ export default function Home() {
       });
       const contentType = res.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Request failed");
+        const data: unknown = await res.json();
+        if (!res.ok) {
+          const errMsg = (data && typeof data === "object" && (data as UnknownRecord)["error"] ? String((data as UnknownRecord)["error"]) : "Request failed");
+          throw new Error(errMsg);
+        }
         // Prefer rendering only the titles if present
-        const titlesField = (data && (data.titles ?? data.suggestions)) as unknown;
+        const obj = (data && typeof data === "object" ? (data as UnknownRecord) : {}) as UnknownRecord;
+        const titlesField = obj["titles"] ?? obj["suggestions"];
         if (typeof titlesField === "string") {
           const arr = titlesField
             .split(",")
@@ -66,20 +72,34 @@ export default function Home() {
             .filter(Boolean);
           setTitles(arr);
         } else if (Array.isArray(titlesField)) {
-          const arr = (titlesField as any[])
-            .map((s) => (typeof s === "string" ? s.trim() : (s?.title || s?.text || s?.suggestion || String(s)).trim()))
+          const arr = (titlesField as unknown[])
+            .map((s): string => {
+              if (typeof s === "string") return s.trim();
+              if (s && typeof s === "object") {
+                const r = s as UnknownRecord;
+                const val = r["title"] ?? r["text"] ?? r["suggestion"];
+                if (typeof val === "string") return val.trim();
+                const anyString = Object.values(r).find((v) => typeof v === "string");
+                if (typeof anyString === "string") return anyString.trim();
+                return String(s).trim();
+              }
+              return String(s).trim();
+            })
             .filter(Boolean);
           setTitles(arr);
         } else {
-          setRawResponse(data);
+          setRawResponse(obj);
         }
       } else {
         const text = await res.text();
         if (!res.ok) throw new Error(text || "Request failed");
         setRawResponse(text);
       }
-    } catch (err: any) {
-      setError(err?.message || "Unexpected error");
+    } catch (err: unknown) {
+      const message = (err && typeof err === "object" && "message" in err)
+        ? String((err as { message?: string }).message)
+        : "Unexpected error";
+      setError(message);
     } finally {
       setLoading(false);
     }

@@ -75,32 +75,49 @@ function buildUserPrompt(input: {
   return lines.join("\n");
 }
 
-function normalizeTitlesFromJson(json: any): string[] {
+type UnknownRecord = Record<string, unknown>;
+
+function normalizeTitlesFromJson(json: unknown): string[] {
+  const obj = (json && typeof json === "object" ? (json as UnknownRecord) : {}) as UnknownRecord;
+  const src = (obj["titles"] ?? obj["suggestions"]) as unknown;
   let titles: string[] = [];
-  const src = json?.titles ?? json?.suggestions;
   if (typeof src === "string") {
-    titles = src
-      .split(",")
-      .map((s: string) => s.trim())
-      .filter(Boolean);
+    titles = src.split(",").map((s) => s.trim()).filter(Boolean);
   } else if (Array.isArray(src)) {
-    titles = src.map((s) => (typeof s === "string" ? s.trim() : (s?.title || s?.text || s?.suggestion || String(s)).trim()));
+    titles = src
+      .map((s): string => {
+        if (typeof s === "string") return s.trim();
+        if (s && typeof s === "object") {
+          const r = s as UnknownRecord;
+          const val = r["title"] ?? r["text"] ?? r["suggestion"];
+          if (typeof val === "string") return val.trim();
+          const anyString = Object.values(r).find((v) => typeof v === "string");
+          if (typeof anyString === "string") return anyString.trim();
+          return String(s).trim();
+        }
+        return String(s).trim();
+      })
+      .filter(Boolean);
   } else if (src && typeof src === "object") {
-    const maybe = src.title || src.text || src.suggestion;
+    const r = src as UnknownRecord;
+    const maybe = (r["title"] ?? r["text"] ?? r["suggestion"]) as unknown;
     if (typeof maybe === "string") titles = [maybe.trim()];
   }
-  // Ensure max length and non-empty
   titles = titles
     .map((t) => String(t).trim())
-    .filter(Boolean)
+    .filter((t) => t.length > 0)
     .map((t) => (t.length > 45 ? t.slice(0, 45).trim() : t));
   return Array.from(new Set(titles));
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const { description, keywords, niche, language } = body || {};
+    const body: unknown = await req.json().catch(() => ({}));
+    const raw = (body && typeof body === "object" ? (body as UnknownRecord) : {}) as UnknownRecord;
+    const description = typeof raw["description"] === "string" ? (raw["description"] as string) : undefined;
+    const keywords = Array.isArray(raw["keywords"]) ? (raw["keywords"] as unknown[]).filter((k): k is string => typeof k === "string") : undefined;
+    const niche = typeof raw["niche"] === "string" ? (raw["niche"] as string) : undefined;
+    const language = typeof raw["language"] === "string" ? (raw["language"] as string) : undefined;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -112,7 +129,7 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    const response = await (ai as any).models.generateContent({
+    const response = await (ai as unknown as { models: { generateContent: (args: unknown) => Promise<unknown> } }).models.generateContent({
       model: "gemini-2.5-flash",
       systemInstruction: buildSystemInstruction(),
       contents: [
@@ -145,27 +162,42 @@ export async function POST(req: Request) {
         topK: 32,
         maxOutputTokens: 2048,
       },
-    } as any);
+    } as unknown);
 
     // Extract text
-    async function extractText(resp: any): Promise<string> {
+    async function extractText(resp: unknown): Promise<string> {
       try {
-        if (resp && typeof resp.text === "function") return await resp.text();
-        if (resp?.response && typeof resp.response.text === "function") return await resp.response.text();
-        if (typeof resp?.outputText === "string") return resp.outputText;
-        const candidates = resp?.response?.candidates || resp?.candidates;
+        const r = resp as UnknownRecord;
+        const hasTextFn = r && typeof r === "object" && typeof (r as UnknownRecord)["text"] === "function";
+        if (hasTextFn) return await (r as { text: () => Promise<string> }).text();
+        const responseObj = (r && typeof r === "object" ? (r["response"] as UnknownRecord | undefined) : undefined);
+        if (responseObj && typeof responseObj["text"] === "function") {
+          return await (responseObj as { text: () => Promise<string> }).text();
+        }
+        if (typeof (r as UnknownRecord)["outputText"] === "string") return String((r as UnknownRecord)["outputText"]);
+        const rr = r as { response?: { candidates?: unknown[] }; candidates?: unknown[] };
+        const candidates = rr?.response?.candidates || rr?.candidates;
         if (Array.isArray(candidates) && candidates.length) {
-          const parts = candidates[0]?.content?.parts;
+          const first = candidates[0] as UnknownRecord;
+          const content = first?.["content"] as UnknownRecord | undefined;
+          const parts = (content?.["parts"] as unknown) as unknown[] | undefined;
           if (Array.isArray(parts)) {
-            const joined = parts.map((p: any) => p?.text || "").filter(Boolean).join("\n");
+            const joined = parts
+              .map((p) => (p && typeof p === "object" && typeof (p as UnknownRecord)["text"] === "string" ? String((p as UnknownRecord)["text"]) : ""))
+              .filter(Boolean)
+              .join("\n");
             if (joined) return joined;
           }
-          const textField = candidates[0]?.content?.text || candidates[0]?.text;
-          if (typeof textField === "string" && textField.trim()) return textField;
+          const textField = (content && typeof (content as UnknownRecord)["text"] === "string" ? String((content as UnknownRecord)["text"]) : (typeof first["text"] === "string" ? String(first["text"]) : ""));
+          if (textField.trim()) return textField;
         }
-        const parts = resp?.content?.parts;
-        if (Array.isArray(parts)) {
-          const joined = parts.map((p: any) => p?.text || "").filter(Boolean).join("\n");
+        const contentObj = (r && typeof r === "object" ? (r["content"] as UnknownRecord | undefined) : undefined);
+        const parts2 = (contentObj?.["parts"] as unknown) as unknown[] | undefined;
+        if (Array.isArray(parts2)) {
+          const joined = parts2
+            .map((p) => (p && typeof p === "object" && typeof (p as UnknownRecord)["text"] === "string" ? String((p as UnknownRecord)["text"]) : ""))
+            .filter(Boolean)
+            .join("\n");
           if (joined) return joined;
         }
         if (typeof resp === "string") return resp;
@@ -182,7 +214,7 @@ export async function POST(req: Request) {
         .replace(/\n?```\s*$/i, "");
     }
 
-    function tryParseJson(s: string): any | null {
+    function tryParseJson(s: string): unknown | null {
       try {
         return JSON.parse(s);
       } catch {
@@ -220,9 +252,10 @@ export async function POST(req: Request) {
       },
       { headers: corsHeaders() },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = (err && typeof err === "object" && "message" in err) ? String((err as { message?: string }).message) : "Unexpected error";
     return NextResponse.json(
-      { error: err?.message || "Unexpected error" },
+      { error: message },
       { status: 500, headers: corsHeaders() },
     );
   }
