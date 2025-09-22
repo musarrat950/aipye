@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
 export const runtime = "nodejs";
+export const maxDuration = 20;
 
 function buildSystemInstruction() {
   return [
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    const response = await ai.models.generateContent({
+    const response = await (ai as unknown as { models: { generateContent: (args: unknown) => Promise<unknown> } }).models.generateContent({
       model: "gemini-2.5-flash",
       systemInstruction: buildSystemInstruction(),
       contents: [
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
         topK: 32,
         maxOutputTokens: 2048,
       },
-    });
+    } as unknown);
 
     // Extract text from response (handle multiple SDK shapes)
     async function extractText(resp: any): Promise<string> {
