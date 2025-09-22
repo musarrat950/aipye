@@ -4,7 +4,6 @@
   "trailingSlash": false,
   "cleanUrls": true,
   "public": true,
-  "regions": ["auto"],
   "functions": {
     "api/public/titles/*.func": {
       "memory": 128,
