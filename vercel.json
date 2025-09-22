@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "framework": "nextjs",
+  "trailingSlash": false,
+  "cleanUrls": true,
+  "public": true,
+  "regions": ["auto"],
+  "functions": {
+    "api/public/titles/*.func": {
+      "memory": 128,
+      "maxDuration": 10,
+      "runtime": "nodejs22.x"
+    },
+    "api/suggest/*.func": {
+      "memory": 256,
+      "maxDuration": 20,
+      "runtime": "nodejs22.x"
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/public/titles",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+      ]
+    }
+  ]
+}
