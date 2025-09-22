@@ -1,5 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## AI YouTube Title Suggester
+
+This app uses the Google Gen AI SDK (Gemini 2.5 Flash) to suggest short, formal yet casual YouTube video titles based on your description and keywords. The UI is built with shadcn/ui using the neutral color design.
+
+- Input fields: description, keywords, niche, language
+- The model is instructed to respond in strict JSON and the server returns only the list of suggestions for display
+
+### Environment Variables
+
+Create a `.env` file in the project root and set your Gemini API key:
+
+```bash
+GEMINI_API_KEY=your_api_key_here
+```
+
+You can obtain an API key from Google AI Studio. Restart the dev server after updating env variables.
+
 ## Getting Started
 
 First, run the development server:
@@ -16,7 +33,7 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
